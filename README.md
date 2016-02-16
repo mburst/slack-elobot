@@ -1,6 +1,6 @@
 # ELO Bot
 
-A basic ELO bot for Slack. Can be used to keep track of the best table tennis or smash player in the office.
+A basic ELO bot for Slack. Can be used to keep track of the best table tennis or smash player in the office. Issues and pull requests welcome!
 
 ## Installation
 
@@ -16,8 +16,7 @@ Then edit the token value in config.json to match the one acquired from https://
 python elobot.py
 ```
 
-Tested on Python 2.7, probably works on 3.x.
-
+Tested on Python 2.7
 
 ## How to use
 

@@ -5,7 +5,7 @@ from playhouse.sqlite_ext import SqliteExtDatabase
 #logger.setLevel(logging.DEBUG)
 #logger.addHandler(logging.StreamHandler())
 
-db = SqliteExtDatabase('elo.db')
+db = SqliteExtDatabase('elo.db', pragmas=(('foreign_keys', True),))
 
 class BaseModel(Model):
     class Meta:

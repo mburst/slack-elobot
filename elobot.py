@@ -65,7 +65,7 @@ class EloBot(object):
             self.talk('<@' + values[1] + '>: Please type "Confirm ' + str(match.id) + '" to confirm the above match or ignore it if it is incorrect')
         except Exception as e:
             print(e)
-            self.text('Unable to save match')
+            self.talk('Unable to save match')
     
     def confirm(self, message):
         values = re.split(CONFIRM_REGEX, message['text'])
