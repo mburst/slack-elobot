@@ -1,0 +1,5 @@
+{
+    "slack_token": "xxx",
+    "channel": "general",
+    "bot_name": "ELO Master"
+}
