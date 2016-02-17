@@ -7,8 +7,8 @@ from peewee import *
 
 from models import db, Player, Match
 
-WINNER_REGEX = re.compile('^I crushed <@([A-z0-9]*)> (\d+)-(\d+)')
-CONFIRM_REGEX = re.compile('Confirm (\d+)')
+WINNER_REGEX = re.compile('^I crushed <@([A-z0-9]*)> (\d+)-(\d+)', re.IGNORECASE)
+CONFIRM_REGEX = re.compile('Confirm (\d+)', re.IGNORECASE)
 
 class EloBot(object):
     def __init__(self, slack_client, channel, config):
