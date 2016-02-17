@@ -13,7 +13,7 @@ class BaseModel(Model):
 
 class Player(BaseModel):
     slack_id = CharField(primary_key=True)
-    rating   = FloatField(default=1500)
+    rating   = IntegerField(default=1500)
     wins     = IntegerField(default=0)
     losses   = IntegerField(default=0)
     
@@ -33,8 +33,8 @@ class Match(BaseModel):
     pending      = BooleanField(default=True)
     played       = DateTimeField(constraints=[SQL('DEFAULT CURRENT_TIMESTAMP')])
     
-    class Meta:
-        indexes = (
-            # Specify a unique multi-column index on from/to-user.
-            (('winner', 'loser'), True),
-        )
+    def save(self, *args, **kwargs):
+        if self.winner != self.loser:
+            return super(Match, self).save(*args, **kwargs)
+        
+        raise IntegrityError('Winner cannot be the same as loser')
