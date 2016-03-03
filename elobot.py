@@ -109,7 +109,7 @@ class EloBot(object):
     def print_leaderboard(self):
         table = []
         
-        for player in Player.select().order_by(Player.rating.desc()).limit(10):
+        for player in Player.select().order_by(Player.rating.desc()).limit(25):
             table.append(['<@' + player.slack_id + '>', player.rating, player.wins, player.losses])
             
         self.talk('```' + tabulate(table, headers=['Name', 'ELO', 'Wins', 'Losses']) + '```')
