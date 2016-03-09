@@ -4,11 +4,16 @@ import re
 from slackclient import SlackClient
 from tabulate import tabulate
 from peewee import *
+from datetime import datetime
+from dateutil import tz
 
 from models import db, Player, Match
 
 WINNER_REGEX = re.compile('^I crushed <@([A-z0-9]*)> (\d+)-(\d+)', re.IGNORECASE)
 CONFIRM_REGEX = re.compile('Confirm (\d+)', re.IGNORECASE)
+
+from_zone = tz.gettz('UTC')
+to_zone = tz.gettz('America/Los_Angeles')
 
 class EloBot(object):
     def __init__(self, slack_client, channel, config):
@@ -43,6 +48,8 @@ class EloBot(object):
                         self.confirm(message)
                     elif message['text'] == 'Print leaderboard':
                         self.print_leaderboard()
+                    elif message['text'] == 'Print unconfirmed':
+                        self.print_unconfirmed()
             self.heartbeat()
             time.sleep(0.1)
             
@@ -113,6 +120,18 @@ class EloBot(object):
             table.append(['<@' + player.slack_id + '>', player.rating, player.wins, player.losses])
             
         self.talk('```' + tabulate(table, headers=['Name', 'ELO', 'Wins', 'Losses']) + '```')
+
+    def print_unconfirmed(self):
+        table = []
+
+        Winner = Player.alias()
+        Loser  = Player.alias()
+        for match in Match.select(Match, Winner, Loser).join(Winner, on=(Match.winner == Winner.slack_id)).join(Loser, on=(Match.loser == Loser.slack_id)).where(Match.pending == True).order_by(Match.played.desc()).limit(25):
+            match_played_utc = match.played.replace(tzinfo=from_zone)
+            match_played_pst = match_played_utc.astimezone(to_zone)
+            table.append([match.id, '<@' + match.loser.slack_id + '>', '<@' + match.winner.slack_id + '>', str(match.winner_score) + '-' + str(match.loser_score), match_played_pst.strftime('%m/%d/%y %I:%M %p')])
+
+        self.talk('```' + tabulate(table, headers=['Match', 'Needs to Confirm', 'Opponent', 'Score', 'Date']) + '```')
 
 def get_channel_id(slack_client, channel_name):
     channels = json.loads(slack_client.api_call("channels.list"))
