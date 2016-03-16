@@ -12,7 +12,7 @@ from models import db, Player, Match
 SIGNUP_REGEX = re.compile('Sign me up', re.IGNORECASE)
 WINNER_REGEX = re.compile('^I crushed <@([A-z0-9]*)> (\d+)-(\d+)', re.IGNORECASE)
 CONFIRM_REGEX = re.compile('Confirm (\d+)', re.IGNORECASE)
-LEARDERBOARD_REGEX = re.compile('Print leaderboard', re.IGNORECASE)
+LEADERBOARD_REGEX = re.compile('Print leaderboard', re.IGNORECASE)
 UNCONFIRMED_REGEX = re.compile('Print unconfirmed', re.IGNORECASE)
 
 from_zone = tz.gettz('UTC')
