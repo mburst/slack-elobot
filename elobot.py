@@ -9,8 +9,11 @@ from dateutil import tz
 
 from models import db, Player, Match
 
+SIGNUP_REGEX = re.compile('Sign me up', re.IGNORECASE)
 WINNER_REGEX = re.compile('^I crushed <@([A-z0-9]*)> (\d+)-(\d+)', re.IGNORECASE)
 CONFIRM_REGEX = re.compile('Confirm (\d+)', re.IGNORECASE)
+LEARDERBOARD_REGEX = re.compile('Print leaderboard', re.IGNORECASE)
+UNCONFIRMED_REGEX = re.compile('Print unconfirmed', re.IGNORECASE)
 
 from_zone = tz.gettz('UTC')
 to_zone = tz.gettz('America/Los_Angeles')
@@ -40,15 +43,15 @@ class EloBot(object):
             for message in self.slack_client.rtm_read():
                 if message.get('type', False) == 'message' and message.get('channel', False) == self.channel and message.get('text', False):
                     #print message #Useful for debugging
-                    if message['text'] == 'Sign me up':
+                    if SIGNUP_REGEX.match(message['text']):
                         self.sign_up(message)
                     elif WINNER_REGEX.match(message['text']):
                         self.winner(message)
                     elif CONFIRM_REGEX.match(message['text']):
                         self.confirm(message)
-                    elif message['text'] == 'Print leaderboard':
+                    elif LEADERBOARD_REGEX.match(message['text']):
                         self.print_leaderboard()
-                    elif message['text'] == 'Print unconfirmed':
+                    elif UNCONFIRMED_REGEX.match(message['text']):
                         self.print_unconfirmed()
             self.heartbeat()
             time.sleep(0.1)
