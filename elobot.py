@@ -57,6 +57,10 @@ class EloBot(object):
             time.sleep(0.1)
             
     def sign_up(self, message):
+        if self.is_bot(message['user']):
+            self.talk('Nice try, <@' + message['user'] + '>: ' + 'No bots allowed!')
+            return
+
         try:
             player = Player.create(slack_id=message['user'])
             self.talk('<@' + message['user'] + '>: ' + 'You\'re all signed up. Good luck!')
@@ -119,7 +123,7 @@ class EloBot(object):
     def print_leaderboard(self):
         table = []
         
-        for player in Player.select().order_by(Player.rating.desc()).limit(25):
+        for player in Player.select().where((Player.wins + Player.losses) > 0).order_by(Player.rating.desc()).limit(25):
             table.append(['<@' + player.slack_id + '>', player.rating, player.wins, player.losses])
             
         self.talk('```' + tabulate(table, headers=['Name', 'ELO', 'Wins', 'Losses']) + '```')
@@ -136,9 +140,12 @@ class EloBot(object):
 
         self.talk('```' + tabulate(table, headers=['Match', 'Needs to Confirm', 'Opponent', 'Score', 'Date']) + '```')
 
+    def is_bot(self, user_id):
+        return self.slack_client.api_call('users.info', user=user_id)['user']['is_bot']
+
 def get_channel_id(slack_client, channel_name):
-    channels = json.loads(slack_client.api_call("channels.list"))
-    
+    channels = slack_client.api_call("channels.list")
+
     for channel in channels['channels']:
         if channel['name'] == channel_name:
             return channel['id']
