@@ -15,6 +15,8 @@ CONFIRM_REGEX = re.compile('Confirm (\d+)', re.IGNORECASE)
 LEADERBOARD_REGEX = re.compile('Print leaderboard', re.IGNORECASE)
 UNCONFIRMED_REGEX = re.compile('Print unconfirmed', re.IGNORECASE)
 
+MIN_STREAK_LEN = 3
+
 from_zone = tz.gettz('UTC')
 to_zone = tz.gettz('America/Los_Angeles')
 
@@ -124,9 +126,11 @@ class EloBot(object):
         table = []
         
         for player in Player.select().where((Player.wins + Player.losses) > 0).order_by(Player.rating.desc()).limit(25):
-            table.append(['<@' + player.slack_id + '>', player.rating, player.wins, player.losses])
-            
-        self.talk('```' + tabulate(table, headers=['Name', 'ELO', 'Wins', 'Losses']) + '```')
+            win_streak = self.get_win_streak(player.slack_id)
+            streak_text = ('(won ' + str(win_streak) + ' in a row)') if win_streak >= MIN_STREAK_LEN else ''
+            table.append(['<@' + player.slack_id + '>', player.rating, player.wins, player.losses, streak_text])
+
+        self.talk('```' + tabulate(table, headers=['Name', 'ELO', 'Wins', 'Losses', 'Streak']) + '```')
 
     def print_unconfirmed(self):
         table = []
@@ -142,6 +146,18 @@ class EloBot(object):
 
     def is_bot(self, user_id):
         return self.slack_client.api_call('users.info', user=user_id)['user']['is_bot']
+
+    def get_win_streak(self, player_slack_id):
+        win_streak = 0
+        matches = Match.select().where((player_slack_id == Match.winner) | (player_slack_id == Match.loser)).order_by(Match.played.desc())
+        for match in matches:
+            print 'match id: ' + str(match.id) + ', winner: ' + match.winner_id + ', and loser: ' + match.loser_id
+            if (player_slack_id == match.winner_id):
+                win_streak = win_streak + 1
+            else:
+                break
+
+        return win_streak
 
 def get_channel_id(slack_client, channel_name):
     channels = slack_client.api_call("channels.list")
