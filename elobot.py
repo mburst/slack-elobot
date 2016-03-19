@@ -15,8 +15,6 @@ CONFIRM_REGEX = re.compile('Confirm (\d+)', re.IGNORECASE)
 LEADERBOARD_REGEX = re.compile('Print leaderboard', re.IGNORECASE)
 UNCONFIRMED_REGEX = re.compile('Print unconfirmed', re.IGNORECASE)
 
-MIN_STREAK_LEN = 3
-
 from_zone = tz.gettz('UTC')
 to_zone = tz.gettz('America/Los_Angeles')
 
@@ -124,10 +122,11 @@ class EloBot(object):
             
     def print_leaderboard(self):
         table = []
-        
+        min_streak_len = config['min_streak_length']
+
         for player in Player.select().where((Player.wins + Player.losses) > 0).order_by(Player.rating.desc()).limit(25):
             win_streak = self.get_win_streak(player.slack_id)
-            streak_text = ('(won ' + str(win_streak) + ' in a row)') if win_streak >= MIN_STREAK_LEN else ''
+            streak_text = ('(won ' + str(win_streak) + ' in a row)') if win_streak >= min_streak_len else ''
             table.append(['<@' + player.slack_id + '>', player.rating, player.wins, player.losses, streak_text])
 
         self.talk('```' + tabulate(table, headers=['Name', 'ELO', 'Wins', 'Losses', 'Streak']) + '```')
@@ -151,7 +150,6 @@ class EloBot(object):
         win_streak = 0
         matches = Match.select().where((player_slack_id == Match.winner) | (player_slack_id == Match.loser)).order_by(Match.played.desc())
         for match in matches:
-            print 'match id: ' + str(match.id) + ', winner: ' + match.winner_id + ', and loser: ' + match.loser_id
             if (player_slack_id == match.winner_id):
                 win_streak = win_streak + 1
             else:
