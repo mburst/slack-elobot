@@ -99,7 +99,7 @@ class EloBot(object):
             #http://stackoverflow.com/questions/24977236/saving-peewee-queries-with-multiple-foreign-key-relationships-against-the-same-t
             Winner = Player.alias()
             Loser  = Player.alias()
-            match = Match.select(Match, Winner, Loser).join(Winner, on=(Match.winner == Winner.slack_id)).join(Loser, on=(Match.loser == Loser.slack_id)).where(Match.id == values[1], Match.loser == message['user'], Match.pending == True).get()
+            match = Match.select(Match, Winner, Loser).join(Winner, on=(Match.winner == Winner.slack_id)).join(Loser, on=(Match.loser == Loser.slack_id)).where(Match.id == values[1], Match.loser == user, Match.pending == True).get()
             
             with db.transaction():
                 match.winner.wins  += 1
