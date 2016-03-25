@@ -122,11 +122,14 @@ class EloBot(object):
             
     def print_leaderboard(self):
         table = []
-        
+        min_streak_len = config['min_streak_length']
+
         for player in Player.select().where((Player.wins + Player.losses) > 0).order_by(Player.rating.desc()).limit(25):
-            table.append(['<@' + player.slack_id + '>', player.rating, player.wins, player.losses])
-            
-        self.talk('```' + tabulate(table, headers=['Name', 'ELO', 'Wins', 'Losses']) + '```')
+            win_streak = self.get_win_streak(player.slack_id)
+            streak_text = ('(won ' + str(win_streak) + ' in a row)') if win_streak >= min_streak_len else ''
+            table.append(['<@' + player.slack_id + '>', player.rating, player.wins, player.losses, streak_text])
+
+        self.talk('```' + tabulate(table, headers=['Name', 'ELO', 'Wins', 'Losses', 'Streak']) + '```')
 
     def print_unconfirmed(self):
         table = []
@@ -142,6 +145,17 @@ class EloBot(object):
 
     def is_bot(self, user_id):
         return self.slack_client.api_call('users.info', user=user_id)['user']['is_bot']
+
+    def get_win_streak(self, player_slack_id):
+        win_streak = 0
+        matches = Match.select().where((player_slack_id == Match.winner) | (player_slack_id == Match.loser)).order_by(Match.played.desc())
+        for match in matches:
+            if (player_slack_id == match.winner_id):
+                win_streak = win_streak + 1
+            else:
+                break
+
+        return win_streak
 
 def get_channel_id(slack_client, channel_name):
     channels = slack_client.api_call("channels.list")
