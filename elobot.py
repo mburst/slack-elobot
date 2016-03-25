@@ -84,9 +84,8 @@ class EloBot(object):
             self.talk('Unable to save match. ' + str(e))
     
     def confirm_all(self, message):
-        matches = Match.select(Match).where(Match.loser == message['user'], Match.pending == True).get()
-        for match in matches:
-            self.confirm(message['user'], 'Confirm '+match.id)
+        for match in Match.select(Match).where(Match.loser == message['user'], Match.pending == True):
+            self.confirm(message['user'], 'Confirm '+ int(match.id))
     
     def confirm(self, user, message_text):
         values = re.split(CONFIRM_REGEX, message_text)
