@@ -148,7 +148,7 @@ class EloBot(object):
 
     def get_win_streak(self, player_slack_id):
         win_streak = 0
-        matches = Match.select().where((player_slack_id == Match.winner) | (player_slack_id == Match.loser)).order_by(Match.played.desc())
+        matches = Match.select().where(Match.pending == False, (player_slack_id == Match.winner) | (player_slack_id == Match.loser)).order_by(Match.played.desc())
         for match in matches:
             if (player_slack_id == match.winner_id):
                 win_streak = win_streak + 1
