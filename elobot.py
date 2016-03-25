@@ -85,7 +85,7 @@ class EloBot(object):
     
     def confirm_all(self, message):
         for match in Match.select(Match).where(Match.loser == message['user'], Match.pending == True):
-            self.confirm(message['user'], 'Confirm '+ int(match.id))
+            self.confirm(message['user'], 'Confirm '+ str(match.id))
     
     def confirm(self, user, message_text):
         values = re.split(CONFIRM_REGEX, message_text)
