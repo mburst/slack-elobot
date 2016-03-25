@@ -12,6 +12,7 @@ from models import db, Player, Match
 SIGNUP_REGEX = re.compile('Sign me up', re.IGNORECASE)
 WINNER_REGEX = re.compile('^I crushed <@([A-z0-9]*)> (\d+)-(\d+)', re.IGNORECASE)
 CONFIRM_REGEX = re.compile('Confirm (\d+)', re.IGNORECASE)
+CONFIRM_ALL_REGEX = re.compile('Confirm all', re.IGNORECASE)
 LEADERBOARD_REGEX = re.compile('Print leaderboard', re.IGNORECASE)
 UNCONFIRMED_REGEX = re.compile('Print unconfirmed', re.IGNORECASE)
 
@@ -48,7 +49,9 @@ class EloBot(object):
                     elif WINNER_REGEX.match(message['text']):
                         self.winner(message)
                     elif CONFIRM_REGEX.match(message['text']):
-                        self.confirm(message)
+                        self.confirm(message['user'], message['text'])
+                    elif CONFIRM_ALL_REGEX.match(message['text']):
+                        self.confirm_all(message)
                     elif LEADERBOARD_REGEX.match(message['text']):
                         self.print_leaderboard()
                     elif UNCONFIRMED_REGEX.match(message['text']):
@@ -80,8 +83,13 @@ class EloBot(object):
         except Exception as e:
             self.talk('Unable to save match. ' + str(e))
     
-    def confirm(self, message):
-        values = re.split(CONFIRM_REGEX, message['text'])
+    def confirm_all(self, message):
+        matches = Match.select(Match).where(Match.loser == message['user'], Match.pending == True).get()
+        for match in matches:
+            self.confirm(message['user'], 'Confirm '+match.id)
+    
+    def confirm(self, user, message_text):
+        values = re.split(CONFIRM_REGEX, message_text)
         
         #0: blank, 1: match_id, 2: blank
         if not values or len(values) != 3:
@@ -91,7 +99,7 @@ class EloBot(object):
             #http://stackoverflow.com/questions/24977236/saving-peewee-queries-with-multiple-foreign-key-relationships-against-the-same-t
             Winner = Player.alias()
             Loser  = Player.alias()
-            match = Match.select(Match, Winner, Loser).join(Winner, on=(Match.winner == Winner.slack_id)).join(Loser, on=(Match.loser == Loser.slack_id)).where(Match.id == values[1], Match.loser == message['user'], Match.pending == True).get()
+            match = Match.select(Match, Winner, Loser).join(Winner, on=(Match.winner == Winner.slack_id)).join(Loser, on=(Match.loser == Loser.slack_id)).where(Match.id == values[1], Match.loser == user, Match.pending == True).get()
             
             with db.transaction():
                 match.winner.wins  += 1
