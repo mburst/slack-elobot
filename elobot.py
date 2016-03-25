@@ -51,7 +51,7 @@ class EloBot(object):
                     elif CONFIRM_REGEX.match(message['text']):
                         self.confirm(message['user'], message['text'])
                     elif CONFIRM_ALL_REGEX.match(message['text']):
-                        _all(message)
+                        self.confirm_all(message)
                     elif LEADERBOARD_REGEX.match(message['text']):
                         self.print_leaderboard()
                     elif UNCONFIRMED_REGEX.match(message['text']):
