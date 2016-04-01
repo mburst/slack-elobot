@@ -10,7 +10,7 @@ from dateutil import tz
 from models import db, Player, Match
 
 SIGNUP_REGEX = re.compile('Sign me up', re.IGNORECASE)
-WINNER_REGEX = re.compile('^I crushed <@([A-z0-9]*)> (\d+)-(\d+)', re.IGNORECASE)
+WINNER_REGEX = re.compile('^I\s+(crushed|rekt|beat|whooped)\s+<@([A-z0-9]*)>\s+(\d{1,2})-(\d{1,2})\s*(,\s*(\d{1,2})-(\d{1,2}))*', re.IGNORECASE)
 CONFIRM_REGEX = re.compile('Confirm (\d+)', re.IGNORECASE)
 CONFIRM_ALL_REGEX = re.compile('Confirm all', re.IGNORECASE)
 LEADERBOARD_REGEX = re.compile('Print leaderboard', re.IGNORECASE)
@@ -71,18 +71,34 @@ class EloBot(object):
             self.talk('<@' + message['user'] + '>: ' + 'You\'re already signed up!')
     
     def winner(self, message):
-        values = re.split(WINNER_REGEX, message['text'])
-        
-        #0: blank, 1: loser_id, 2: first score, 3: second score, 4: blank
-        if not values or len(values) != 5:
+        # 0: space, 1: winning verb, 2: loser_id, 3: first score, 4: second score
+        # then 0 or more of...
+        # 5: 2nd game hyphenated score, 6: 2nd game first score, 7: 2nd game second score
+        msg = message['text']
+        values = re.split(WINNER_REGEX, msg)
+        if not values or len(values) < 5:
             return
-        
-        try:
-            match = Match.create(winner=message['user'], winner_score=values[2], loser=values[1], loser_score=values[3])
-            self.talk('<@' + values[1] + '>: Please type "Confirm ' + str(match.id) + '" to confirm the above match or ignore it if it is incorrect')
-        except Exception as e:
-            self.talk('Unable to save match. ' + str(e))
-    
+
+        loser_id = values[2]
+
+        # csv game list starts after the end of the slack username
+        games_csv = msg[(msg.index('>') + 1):]
+        games = games_csv.replace(' ', '').split(',')
+
+        for game in games:
+            scores = game.split('-')
+            if len(scores) != 2:
+                continue
+
+            first_score = int(scores[0])
+            second_score = int(scores[1])
+
+            try:
+                match = Match.create(winner=message['user'], winner_score=first_score, loser=loser_id, loser_score=second_score)
+                self.talk('<@' + loser_id + '>: Please type "Confirm ' + str(match.id) + '" to confirm the above match or ignore it if it is incorrect')
+            except Exception as e:
+                self.talk('Unable to save match. ' + str(e))
+
     def confirm_all(self, message):
         for match in Match.select(Match).where(Match.loser == message['user'], Match.pending == True):
             self.confirm(message['user'], 'Confirm '+ str(match.id))
