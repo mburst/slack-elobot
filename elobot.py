@@ -100,7 +100,10 @@ class EloBot(object):
                 self.talk('Unable to save match. ' + str(e))
 
     def confirm_all(self, message):
+        match_list = []
         for match in Match.select(Match).where(Match.loser == message['user'], Match.pending == True):
+            match_list.append(match.id)
+        for match in match_list:
             self.confirm(message['user'], 'Confirm '+ str(match.id))
     
     def confirm(self, user, message_text):
