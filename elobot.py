@@ -102,7 +102,7 @@ class EloBot(object):
     def confirm_all(self, message):
         match_list = []
         for match in Match.select(Match).where(Match.loser == message['user'], Match.pending == True):
-            match_list.append(match.id)
+            match_list.append(match)
         for match in match_list:
             self.confirm(message['user'], 'Confirm '+ str(match.id))
     
