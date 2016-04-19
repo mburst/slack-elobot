@@ -25,23 +25,44 @@ class EloBot(object):
         self.slack_client = slack_client
         self.channel = channel
         self.config = config
-        self.slack_client.rtm_connect()
+        self.connect()
         self.run()
-        
+
+    def connect(self):
+        sleeptime = 0.1
+
+        while True:
+            try:
+                self.slack_client.rtm_connect()
+                break
+            except:
+                time.sleep(sleeptime)
+
+                #Exponential back off with a max wait of 30s
+                if sleeptime < 30:
+                    sleeptime *= 2
+
     def heartbeat(self):
         now = int(time.time())
         if now > self.last_ping + 3:
             self.slack_client.server.ping()
             self.last_ping = now
-    
+
     def talk(self, message):
         self.slack_client.api_call('chat.postMessage', channel=self.channel, text=message, username=self.config['bot_name'])
-    
+
     def run(self):
         self.talk(self.config['bot_name'] + ' online!')
-        
+
         while True:
-            for message in self.slack_client.rtm_read():
+            try:
+                messages = self.slack_client.rtm_read()
+            except:
+                #Attempt to reconnect if failed to read from websocket
+                self.connect()
+                continue
+
+            for message in messages:
                 if message.get('type', False) == 'message' and message.get('channel', False) == self.channel and message.get('text', False):
                     #print message #Useful for debugging
                     if SIGNUP_REGEX.match(message['text']):
@@ -58,7 +79,7 @@ class EloBot(object):
                         self.print_unconfirmed()
             self.heartbeat()
             time.sleep(0.1)
-            
+
     def sign_up(self, message):
         if self.is_bot(message['user']):
             self.talk('Nice try, <@' + message['user'] + '>: ' + 'No bots allowed!')
@@ -69,7 +90,7 @@ class EloBot(object):
             self.talk('<@' + message['user'] + '>: ' + 'You\'re all signed up. Good luck!')
         except IntegrityError:
             self.talk('<@' + message['user'] + '>: ' + 'You\'re already signed up!')
-    
+
     def winner(self, message):
         # 0: space, 1: winning verb, 2: loser_id, 3: first score, 4: second score
         # then 0 or more of...
@@ -105,47 +126,47 @@ class EloBot(object):
             match_list.append(match)
         for match in match_list:
             self.confirm(message['user'], 'Confirm '+ str(match.id))
-    
+
     def confirm(self, user, message_text):
         values = re.split(CONFIRM_REGEX, message_text)
-        
+
         #0: blank, 1: match_id, 2: blank
         if not values or len(values) != 3:
             return
-        
+
         try:
             #http://stackoverflow.com/questions/24977236/saving-peewee-queries-with-multiple-foreign-key-relationships-against-the-same-t
             Winner = Player.alias()
             Loser  = Player.alias()
             match = Match.select(Match, Winner, Loser).join(Winner, on=(Match.winner == Winner.slack_id)).join(Loser, on=(Match.loser == Loser.slack_id)).where(Match.id == values[1], Match.loser == user, Match.pending == True).get()
-            
+
             with db.transaction():
                 match.winner.wins  += 1
                 match.loser.losses += 1
-                
+
                 winner_old_elo = match.winner.rating
                 loser_old_elo  = match.loser.rating
-                
+
                 #https://metinmediamath.wordpress.com/2013/11/27/how-to-calculate-the-elo-rating-including-example/
                 winner_transformed_rating = 10**(match.winner.rating/400.0)
                 loser_transformed_rating  = 10**(match.loser.rating/400.0)
-                
+
                 winner_expected_score = winner_transformed_rating /(winner_transformed_rating + loser_transformed_rating)
                 loser_expected_score  = loser_transformed_rating /(winner_transformed_rating + loser_transformed_rating)
-                
+
                 match.winner.rating = round(match.winner.rating + match.winner.k_factor() * (1 - winner_expected_score))
                 match.loser.rating = round(match.loser.rating + match.loser.k_factor() * (0 - loser_expected_score))
-                
+
                 match.pending = False
                 match.save()
                 match.winner.save()
                 match.loser.save()
-            
+
                 self.talk('<@' + match.winner.slack_id + '> your new ELO is: ' + str(match.winner.rating) + ' You won ' + str(match.winner.rating - winner_old_elo) + ' ELO')
                 self.talk('<@' + match.loser.slack_id + '> your new ELO is: ' + str(match.loser.rating) + ' You lost ' + str(abs(match.loser.rating - loser_old_elo)) + ' ELO')
         except Exception as e:
             self.talk('Unable to confirm ' + values[1] + '. ' + str(e))
-            
+
     def print_leaderboard(self):
         table = []
         min_streak_len = config['min_streak_length']
@@ -189,10 +210,10 @@ def get_channel_id(slack_client, channel_name):
     for channel in channels['channels']:
         if channel['name'] == channel_name:
             return channel['id']
-    
+
     print('Unable to find channel: ' + channel_name)
     quit()
-    
+
 with open('config.json') as config_data:
     config = json.load(config_data)
 
