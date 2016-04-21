@@ -180,7 +180,7 @@ class EloBot(object):
         try:
             match = Match.select(Match).where(Match.id == values[1], Match.winner == user, Match.pending == True).get()
             match.delete_instance()
-            self.talk('Deleted match ' + values[1]  )
+            self.talk('Deleted match ' + values[1])
         except:
             self.talk('You are not the winner of match ' + values[1])
 
