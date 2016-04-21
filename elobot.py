@@ -13,6 +13,7 @@ SIGNUP_REGEX = re.compile('Sign me up', re.IGNORECASE)
 WINNER_REGEX = re.compile('^I\s+(crushed|rekt|beat|whooped)\s+<@([A-z0-9]*)>\s+(\d{1,2})-(\d{1,2})\s*(,\s*(\d{1,2})-(\d{1,2}))*', re.IGNORECASE)
 CONFIRM_REGEX = re.compile('Confirm (\d+)', re.IGNORECASE)
 CONFIRM_ALL_REGEX = re.compile('Confirm all', re.IGNORECASE)
+DELETE_REGEX = re.compile('Delete (\d+)', re.IGNORECASE)
 LEADERBOARD_REGEX = re.compile('Print leaderboard', re.IGNORECASE)
 UNCONFIRMED_REGEX = re.compile('Print unconfirmed', re.IGNORECASE)
 
@@ -73,6 +74,8 @@ class EloBot(object):
                         self.confirm(message['user'], message['text'])
                     elif CONFIRM_ALL_REGEX.match(message['text']):
                         self.confirm_all(message)
+                    elif DELETE_REGEX.match(message['text']):
+                        self.delete(message['user'], message['text'])
                     elif LEADERBOARD_REGEX.match(message['text']):
                         self.print_leaderboard()
                     elif UNCONFIRMED_REGEX.match(message['text']):
@@ -166,6 +169,20 @@ class EloBot(object):
                 self.talk('<@' + match.loser.slack_id + '> your new ELO is: ' + str(match.loser.rating) + ' You lost ' + str(abs(match.loser.rating - loser_old_elo)) + ' ELO')
         except Exception as e:
             self.talk('Unable to confirm ' + values[1] + '. ' + str(e))
+            
+    def delete(self, user, message_text):
+        values = re.split(CONFIRM_REGEX, message_text)
+
+        #0: blank, 1: match_id, 2: blank
+        if not values or len(values) != 3:
+            return
+        
+        try:
+            match = Match.select(Match).where(Match.id == values[1], Match.winner == user, Match.pending == True).get()
+            match.delete_instance()
+            self.talk('Deleted match ' + values[1])
+        except:
+            self.talk('You are not the winner of match ' + values[1])
 
     def print_leaderboard(self):
         table = []
