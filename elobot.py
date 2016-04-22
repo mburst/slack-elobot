@@ -171,7 +171,7 @@ class EloBot(object):
             self.talk('Unable to confirm ' + values[1] + '. ' + str(e))
             
     def delete(self, user, message_text):
-        values = re.split(CONFIRM_REGEX, message_text)
+        values = re.split(DELETE_REGEX, message_text)
 
         #0: blank, 1: match_id, 2: blank
         if not values or len(values) != 3:
