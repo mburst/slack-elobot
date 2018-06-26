@@ -51,6 +51,7 @@ class EloBot(object):
             self.last_ping = now
 
     def talk(self, message):
+        print(message)
         self.slack_client.api_call('chat.postMessage', channel=self.channel, text=message, username=self.config['bot_name'])
 
     def run(self):
@@ -194,7 +195,7 @@ class EloBot(object):
         for player in Player.select().where((Player.wins + Player.losses) > 0).order_by(Player.rating.desc()).limit(25):
             win_streak = self.get_win_streak(player.slack_id)
             streak_text = ('(won ' + str(win_streak) + ' in a row)') if win_streak >= min_streak_len else ''
-            table.append(['<@' + player.slack_id + '>', player.rating, player.wins, player.losses, streak_text])
+            table.append([self.get_name(player.slack_id), player.rating, player.wins, player.losses, streak_text])
 
         self.talk('```' + tabulate(table, headers=['Name', 'ELO', 'Wins', 'Losses', 'Streak']) + '```')
 
@@ -212,6 +213,9 @@ class EloBot(object):
 
     def is_bot(self, user_id):
         return self.slack_client.api_call('users.info', user=user_id)['user']['is_bot']
+    def get_name(self, user_id):
+        return self.slack_client.api_call('users.info', user=user_id)['user']['profile']['display_name_normalized']
+
 
     def get_win_streak(self, player_slack_id):
         win_streak = 0
