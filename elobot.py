@@ -61,9 +61,8 @@ class EloBot(object):
             if self.slack_client.server.connected:
                 messages = self.slack_client.rtm_read()
                 for message in messages:
-                    print('received messages {}'.format(messages))
                     if message.get('type', False) == 'message' and message.get('channel', False) == self.channel and message.get('text', False):
-                        #print message #Useful for debugging
+                        print('received messages {}'.format(messages))
                         print('processing message in my channel {}'.format(message))
                         if SIGNUP_REGEX.match(message['text']):
                             self.sign_up(message)
