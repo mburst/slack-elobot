@@ -30,6 +30,7 @@ class EloBot(object):
         self.run()
 
     def connect(self):
+        print('connecting!')
         sleeptime = 0.1
 
         while True:
@@ -50,40 +51,43 @@ class EloBot(object):
             self.last_ping = now
 
     def talk(self, message):
+        print(message)
         self.slack_client.api_call('chat.postMessage', channel=self.channel, text=message, username=self.config['bot_name'])
 
     def run(self):
+        print('running!')
         self.talk(self.config['bot_name'] + ' online!')
 
         while True:
-            try:
+            if self.slack_client.server.connected:
                 messages = self.slack_client.rtm_read()
-            except:
+                for message in messages:
+                    if message.get('type', False) == 'message' and message.get('channel', False) == self.channel and message.get('text', False):
+                        print('received messages {}'.format(messages))
+                        print('processing message in my channel {}'.format(message))
+                        if SIGNUP_REGEX.match(message['text']):
+                            self.sign_up(message)
+                        elif WINNER_REGEX.match(message['text']):
+                            self.winner(message)
+                        elif CONFIRM_REGEX.match(message['text']):
+                            self.confirm(message['user'], message['text'])
+                        elif CONFIRM_ALL_REGEX.match(message['text']):
+                            self.confirm_all(message)
+                        elif DELETE_REGEX.match(message['text']):
+                            self.delete(message['user'], message['text'])
+                        elif LEADERBOARD_REGEX.match(message['text']):
+                            self.print_leaderboard()
+                        elif UNCONFIRMED_REGEX.match(message['text']):
+                            self.print_unconfirmed()
+                self.heartbeat()
+                time.sleep(0.1)
+            else:
                 #Attempt to reconnect if failed to read from websocket
                 self.connect()
                 continue
 
-            for message in messages:
-                if message.get('type', False) == 'message' and message.get('channel', False) == self.channel and message.get('text', False):
-                    #print message #Useful for debugging
-                    if SIGNUP_REGEX.match(message['text']):
-                        self.sign_up(message)
-                    elif WINNER_REGEX.match(message['text']):
-                        self.winner(message)
-                    elif CONFIRM_REGEX.match(message['text']):
-                        self.confirm(message['user'], message['text'])
-                    elif CONFIRM_ALL_REGEX.match(message['text']):
-                        self.confirm_all(message)
-                    elif DELETE_REGEX.match(message['text']):
-                        self.delete(message['user'], message['text'])
-                    elif LEADERBOARD_REGEX.match(message['text']):
-                        self.print_leaderboard()
-                    elif UNCONFIRMED_REGEX.match(message['text']):
-                        self.print_unconfirmed()
-            self.heartbeat()
-            time.sleep(0.1)
-
     def sign_up(self, message):
+        print('signing up with message {}'.format(message))
         if self.is_bot(message['user']):
             self.talk('Nice try, <@' + message['user'] + '>: ' + 'No bots allowed!')
             return
@@ -169,14 +173,14 @@ class EloBot(object):
                 self.talk('<@' + match.loser.slack_id + '> your new ELO is: ' + str(match.loser.rating) + ' You lost ' + str(abs(match.loser.rating - loser_old_elo)) + ' ELO')
         except Exception as e:
             self.talk('Unable to confirm ' + values[1] + '. ' + str(e))
-            
+
     def delete(self, user, message_text):
         values = re.split(DELETE_REGEX, message_text)
 
         #0: blank, 1: match_id, 2: blank
         if not values or len(values) != 3:
             return
-        
+
         try:
             match = Match.select(Match).where(Match.id == values[1], Match.winner == user, Match.pending == True).get()
             match.delete_instance()
@@ -191,7 +195,7 @@ class EloBot(object):
         for player in Player.select().where((Player.wins + Player.losses) > 0).order_by(Player.rating.desc()).limit(25):
             win_streak = self.get_win_streak(player.slack_id)
             streak_text = ('(won ' + str(win_streak) + ' in a row)') if win_streak >= min_streak_len else ''
-            table.append(['<@' + player.slack_id + '>', player.rating, player.wins, player.losses, streak_text])
+            table.append([self.get_name(player.slack_id), player.rating, player.wins, player.losses, streak_text])
 
         self.talk('```' + tabulate(table, headers=['Name', 'ELO', 'Wins', 'Losses', 'Streak']) + '```')
 
@@ -209,6 +213,9 @@ class EloBot(object):
 
     def is_bot(self, user_id):
         return self.slack_client.api_call('users.info', user=user_id)['user']['is_bot']
+    def get_name(self, user_id):
+        return self.slack_client.api_call('users.info', user=user_id)['user']['profile']['display_name_normalized']
+
 
     def get_win_streak(self, player_slack_id):
         win_streak = 0
@@ -236,5 +243,5 @@ with open('config.json') as config_data:
 
 slack_client = SlackClient(config['slack_token'])
 db.connect()
-db.create_tables([Player, Match], True)
+db.create_tables([Player, Match], safe=True)
 EloBot(slack_client, get_channel_id(slack_client, config['channel']), config)
