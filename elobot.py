@@ -172,14 +172,14 @@ class EloBot(object):
                 self.talk('<@' + match.loser.slack_id + '> your new ELO is: ' + str(match.loser.rating) + ' You lost ' + str(abs(match.loser.rating - loser_old_elo)) + ' ELO')
         except Exception as e:
             self.talk('Unable to confirm ' + values[1] + '. ' + str(e))
-            
+
     def delete(self, user, message_text):
         values = re.split(DELETE_REGEX, message_text)
 
         #0: blank, 1: match_id, 2: blank
         if not values or len(values) != 3:
             return
-        
+
         try:
             match = Match.select(Match).where(Match.id == values[1], Match.winner == user, Match.pending == True).get()
             match.delete_instance()
