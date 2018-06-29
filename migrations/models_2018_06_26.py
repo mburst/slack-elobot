@@ -11,13 +11,11 @@ class BaseModel(Model):
     class Meta:
         database = db
 
-class Player():
-    """ Player is an *in memory only* object that is built up by replaying the match history """
-
-    def __init__(self):
-        self.wins = 0
-        self.losses = 0
-        self.rating = 1500
+class Player(BaseModel):
+    slack_id = CharField(primary_key=True)
+    rating   = IntegerField(default=1500)
+    wins     = IntegerField(default=0)
+    losses   = IntegerField(default=0)
 
     def k_factor(self):
         if self.rating > 2400:
@@ -27,18 +25,16 @@ class Player():
 
         return 24
 
-    def __str__(self):
-        return '<Player {} {} {}>'.format(self.wins, self.losses, self.rating)
-
 class Match(BaseModel):
-    winner_handle = CharField()
-    winner_score  = IntegerField(default=0)
-    loser_handle  = CharField()
-    loser_score   = IntegerField(default=0)
-    pending       = BooleanField(default=True)
-    played        = DateTimeField(constraints=[SQL('DEFAULT CURRENT_TIMESTAMP')])
+    winner       = ForeignKeyField(Player, related_name='matches_won')
+    winner_score = IntegerField(default=0)
+    loser        = ForeignKeyField(Player, related_name='matches_lost')
+    loser_score  = IntegerField(default=0)
+    pending      = BooleanField(default=True)
+    played       = DateTimeField(constraints=[SQL('DEFAULT CURRENT_TIMESTAMP')])
 
     def save(self, *args, **kwargs):
-        if self.winner_handle != self.loser_handle:
+        if self.winner != self.loser:
             return super(Match, self).save(*args, **kwargs)
+
         raise IntegrityError('Winner cannot be the same as loser')

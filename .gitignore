@@ -2,3 +2,4 @@ config.json
 elo.db
 *.pyc
 .DS_Store
+.*.swp
