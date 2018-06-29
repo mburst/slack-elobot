@@ -6,10 +6,11 @@ from tabulate import tabulate
 from peewee import *
 from datetime import datetime
 from dateutil import tz
+from itertools import takewhile
+from collections import defaultdict
 
 from models import db, Player, Match
 
-SIGNUP_REGEX = re.compile('Sign me up', re.IGNORECASE)
 WINNER_REGEX = re.compile('^I\s+(crushed|rekt|beat|whooped)\s+<@([A-z0-9]*)>\s+(\d{1,2})-(\d{1,2})\s*(,\s*(\d{1,2})-(\d{1,2}))*', re.IGNORECASE)
 CONFIRM_REGEX = re.compile('Confirm (\d+)', re.IGNORECASE)
 CONFIRM_ALL_REGEX = re.compile('Confirm all', re.IGNORECASE)
@@ -20,14 +21,49 @@ UNCONFIRMED_REGEX = re.compile('Print unconfirmed', re.IGNORECASE)
 from_zone = tz.gettz('UTC')
 to_zone = tz.gettz('America/Los_Angeles')
 
+
 class EloBot(object):
+    players = defaultdict(Player)
+
     def __init__(self, slack_client, channel, config):
         self.last_ping = 0
         self.slack_client = slack_client
         self.channel = channel
         self.config = config
+        self.init_players()
         self.connect()
         self.run()
+
+    def rank_game(self, winner, loser):
+        #https://metinmediamath.wordpress.com/2013/11/27/how-to-calculate-the-elo-rating-including-example/
+        winner_transformed_rating = 10 ** (winner.rating / 400.0)
+        loser_transformed_rating  = 10 ** (loser.rating / 400.0)
+
+        winner_expected_score = winner_transformed_rating /(winner_transformed_rating + loser_transformed_rating)
+        loser_expected_score  = loser_transformed_rating /(winner_transformed_rating + loser_transformed_rating)
+
+        winner_new_elo = round(winner.rating + winner.k_factor() * (1 - winner_expected_score))
+        loser_new_elo = round(loser.rating + loser.k_factor() * (0 - loser_expected_score))
+
+        winner_elo_delta, loser_elo_delta = abs(winner_new_elo - winner.rating), abs(loser_new_elo - loser.rating)
+
+        winner.wins, loser.losses = winner.wins + 1, loser.losses + 1
+        winner.rating, loser.rating = winner_new_elo, loser_new_elo
+
+        return winner_elo_delta, loser_elo_delta
+
+    def init_players(self):
+        print('initializing in-memory player objects')
+        print('loading match history')
+        matches = list(Match.select().order_by(Match.id))
+        print('simulating games...')
+        for match in matches:
+            if not match.pending:
+                winner, loser = self.players[match.winner_handle], self.players[match.loser_handle]
+                self.rank_game(winner, loser)
+        print('finished initializing players')
+        print('players: {}'.format([ str(player) for player in self.players.values() ]))
+
 
     def connect(self):
         print('connecting!')
@@ -51,23 +87,20 @@ class EloBot(object):
             self.last_ping = now
 
     def talk(self, message):
-        print(message)
+        #print(message)
         self.slack_client.api_call('chat.postMessage', channel=self.channel, text=message, username=self.config['bot_name'])
 
     def run(self):
         print('running!')
-        self.talk(self.config['bot_name'] + ' online!')
+        #self.talk(self.config['bot_name'] + ' online!')
 
         while True:
             if self.slack_client.server.connected:
                 messages = self.slack_client.rtm_read()
                 for message in messages:
                     if message.get('type', False) == 'message' and message.get('channel', False) == self.channel and message.get('text', False):
-                        print('received messages {}'.format(messages))
-                        print('processing message in my channel {}'.format(message))
-                        if SIGNUP_REGEX.match(message['text']):
-                            self.sign_up(message)
-                        elif WINNER_REGEX.match(message['text']):
+                        print('processing message in my channel:\n{}'.format(message))
+                        if WINNER_REGEX.match(message['text']):
                             self.winner(message)
                         elif CONFIRM_REGEX.match(message['text']):
                             self.confirm(message['user'], message['text'])
@@ -85,18 +118,6 @@ class EloBot(object):
                 #Attempt to reconnect if failed to read from websocket
                 self.connect()
                 continue
-
-    def sign_up(self, message):
-        print('signing up with message {}'.format(message))
-        if self.is_bot(message['user']):
-            self.talk('Nice try, <@' + message['user'] + '>: ' + 'No bots allowed!')
-            return
-
-        try:
-            player = Player.create(slack_id=message['user'])
-            self.talk('<@' + message['user'] + '>: ' + 'You\'re all signed up. Good luck!')
-        except IntegrityError:
-            self.talk('<@' + message['user'] + '>: ' + 'You\'re already signed up!')
 
     def winner(self, message):
         # 0: space, 1: winning verb, 2: loser_id, 3: first score, 4: second score
@@ -122,14 +143,14 @@ class EloBot(object):
             second_score = int(scores[1])
 
             try:
-                match = Match.create(winner=message['user'], winner_score=first_score, loser=loser_id, loser_score=second_score)
+                match = Match.create(winner_handle=message['user'], winner_score=first_score, loser_handle=loser_id, loser_score=second_score)
                 self.talk('<@' + loser_id + '>: Please type "Confirm ' + str(match.id) + '" to confirm the above match or ignore it if it is incorrect')
             except Exception as e:
                 self.talk('Unable to save match. ' + str(e))
 
     def confirm_all(self, message):
         match_list = []
-        for match in Match.select(Match).where(Match.loser == message['user'], Match.pending == True):
+        for match in Match.select(Match).where(Match.loser_handle == message['user'], Match.pending == True):
             match_list.append(match)
         for match in match_list:
             self.confirm(message['user'], 'Confirm '+ str(match.id))
@@ -142,35 +163,17 @@ class EloBot(object):
             return
 
         try:
-            #http://stackoverflow.com/questions/24977236/saving-peewee-queries-with-multiple-foreign-key-relationships-against-the-same-t
-            Winner = Player.alias()
-            Loser  = Player.alias()
-            match = Match.select(Match, Winner, Loser).join(Winner, on=(Match.winner == Winner.slack_id)).join(Loser, on=(Match.loser == Loser.slack_id)).where(Match.id == values[1], Match.loser == user, Match.pending == True).get()
+            match = Match.select().where(Match.id == values[1], Match.loser_handle == user, Match.pending == True).get()
 
             with db.transaction():
-                match.winner.wins  += 1
-                match.loser.losses += 1
-
-                winner_old_elo = match.winner.rating
-                loser_old_elo  = match.loser.rating
-
-                #https://metinmediamath.wordpress.com/2013/11/27/how-to-calculate-the-elo-rating-including-example/
-                winner_transformed_rating = 10**(match.winner.rating/400.0)
-                loser_transformed_rating  = 10**(match.loser.rating/400.0)
-
-                winner_expected_score = winner_transformed_rating /(winner_transformed_rating + loser_transformed_rating)
-                loser_expected_score  = loser_transformed_rating /(winner_transformed_rating + loser_transformed_rating)
-
-                match.winner.rating = round(match.winner.rating + match.winner.k_factor() * (1 - winner_expected_score))
-                match.loser.rating = round(match.loser.rating + match.loser.k_factor() * (0 - loser_expected_score))
+                winner, loser = self.players[match.winner_handle], self.players[match.loser_handle]
+                winner_elo_delta, loser_elo_delta = self.rank_game(winner, loser)
 
                 match.pending = False
                 match.save()
-                match.winner.save()
-                match.loser.save()
 
-                self.talk('<@' + match.winner.slack_id + '> your new ELO is: ' + str(match.winner.rating) + ' You won ' + str(match.winner.rating - winner_old_elo) + ' ELO')
-                self.talk('<@' + match.loser.slack_id + '> your new ELO is: ' + str(match.loser.rating) + ' You lost ' + str(abs(match.loser.rating - loser_old_elo)) + ' ELO')
+                self.talk('<@{}> your new ELO is: {} You won {} ELO'.format(match.winner_handle, winner.rating, winner_elo_delta))
+                self.talk('<@{}> your new ELO is: {} You lost {} ELO'.format(match.loser_handle, loser.rating, loser_elo_delta))
         except Exception as e:
             self.talk('Unable to confirm ' + values[1] + '. ' + str(e))
 
@@ -182,7 +185,7 @@ class EloBot(object):
             return
 
         try:
-            match = Match.select(Match).where(Match.id == values[1], Match.winner == user, Match.pending == True).get()
+            match = Match.select(Match).where(Match.id == values[1], Match.winner_handle == user, Match.pending == True).get()
             match.delete_instance()
             self.talk('Deleted match ' + values[1])
         except:
@@ -192,41 +195,40 @@ class EloBot(object):
         table = []
         min_streak_len = config['min_streak_length']
 
-        for player in Player.select().where((Player.wins + Player.losses) > 0).order_by(Player.rating.desc()).limit(25):
-            win_streak = self.get_win_streak(player.slack_id)
-            streak_text = ('(won ' + str(win_streak) + ' in a row)') if win_streak >= min_streak_len else ''
-            table.append([self.get_name(player.slack_id), player.rating, player.wins, player.losses, streak_text])
+        for handle_player_tuple in sorted(self.players.items(), key=lambda p: p[1].rating, reverse=True):
+            slack_handle, player = handle_player_tuple
+            win_streak = self.get_win_streak(slack_handle)
+            streak_text = '(won {} in a row)'.format(win_streak) if win_streak >= min_streak_len else ''
+            table.append([self.get_name(slack_handle), player.rating, player.wins, player.losses, streak_text])
 
         self.talk('```' + tabulate(table, headers=['Name', 'ELO', 'Wins', 'Losses', 'Streak']) + '```')
 
     def print_unconfirmed(self):
         table = []
 
-        Winner = Player.alias()
-        Loser  = Player.alias()
-        for match in Match.select(Match, Winner, Loser).join(Winner, on=(Match.winner == Winner.slack_id)).join(Loser, on=(Match.loser == Loser.slack_id)).where(Match.pending == True).order_by(Match.played.desc()).limit(25):
+        for match in Match.select().where(Match.pending == True).order_by(Match.played.desc()).limit(25):
             match_played_utc = match.played.replace(tzinfo=from_zone)
             match_played_pst = match_played_utc.astimezone(to_zone)
-            table.append([match.id, '<@' + match.loser.slack_id + '>', '<@' + match.winner.slack_id + '>', str(match.winner_score) + '-' + str(match.loser_score), match_played_pst.strftime('%m/%d/%y %I:%M %p')])
+            table.append([
+                match.id,
+                self.get_name(match.loser_handle),
+                self.get_name(match.winner_handle),
+                '{} - {}'.format(match.winner_score, match.loser_score),
+                match_played_pst.strftime('%m/%d/%y %I:%M %p')
+            ])
 
         self.talk('```' + tabulate(table, headers=['Match', 'Needs to Confirm', 'Opponent', 'Score', 'Date']) + '```')
 
     def is_bot(self, user_id):
         return self.slack_client.api_call('users.info', user=user_id)['user']['is_bot']
+
     def get_name(self, user_id):
         return self.slack_client.api_call('users.info', user=user_id)['user']['profile']['display_name_normalized']
 
-
     def get_win_streak(self, player_slack_id):
         win_streak = 0
-        matches = Match.select().where(Match.pending == False, (player_slack_id == Match.winner) | (player_slack_id == Match.loser)).order_by(Match.played.desc())
-        for match in matches:
-            if (player_slack_id == match.winner_id):
-                win_streak = win_streak + 1
-            else:
-                break
-
-        return win_streak
+        matches = Match.select().where(Match.pending == False, (player_slack_id == Match.winner_handle) | (player_slack_id == Match.loser_handle)).order_by(Match.played.desc())
+        return len(list(takewhile(lambda m: m.winner_handle == player_slack_id, matches)))
 
 def get_channel_id(slack_client, channel_name):
     channels = slack_client.api_call("channels.list")
@@ -241,7 +243,8 @@ def get_channel_id(slack_client, channel_name):
 with open('config.json') as config_data:
     config = json.load(config_data)
 
-slack_client = SlackClient(config['slack_token'])
-db.connect()
-db.create_tables([Player, Match], safe=True)
-EloBot(slack_client, get_channel_id(slack_client, config['channel']), config)
+if __name__ == '__main__':
+    slack_client = SlackClient(config['slack_token'])
+    db.connect()
+    Match.create_table()
+    EloBot(slack_client, get_channel_id(slack_client, config['channel']), config)
